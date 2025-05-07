@@ -1,0 +1,4 @@
+node_modules
+/config/serviceAccount.json
+# Keep environment variables out of version control
+.env

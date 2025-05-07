@@ -1,0 +1,330 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConnectionRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELED
+}
+
+enum Role {
+  none
+  buyer
+  seller
+  admin
+}
+
+enum UserStatus {
+  online
+  offline
+  away
+}
+
+enum MessageType {
+  text
+  image
+  file
+}
+
+enum AdvertisementType {
+  Banner
+  Announcement
+  Dog
+  Service
+  Apparel
+}
+
+enum RedirectType {
+  Storefront
+  Announcement
+  Buyer
+  Seller
+  OtherLink
+}
+
+model Category {
+  id            String     @id @default(uuid())
+  category_name String
+  module        ModuleType
+  createdAt     DateTime   @default(now())
+  products      Product[]  @relation("CategoryProducts")
+}
+
+enum ModuleType {
+  DOGS
+  SERVICES
+  APPAREL
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  full_name          String
+  email              String              @unique
+  password           String
+  role               Role                @default(none)
+  meetings           Meeting[]           @relation("UserMeetings")
+  invitedMeetings    Meeting[]           @relation("InvitedMeetings")
+  appointments       Appointment[] // Link to appointments
+  orders             Order[]             @relation("UserOrders")
+  profilePicture     String              @default("")
+  coverPhoto         String              @default("")
+  refreshToken       String              @default("")
+  phone              String?
+  address            String?
+  emailVerified      Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  location           Json?
+  lastSeen           DateTime? // Track last online time
+  status             UserStatus          @default(offline) // Online status
+  buyerProfile       BuyerProfile?       @relation("UserToBuyerProfile")
+  sellerProfile      SellerProfile?      @relation("UserToSellerProfile")
+  connections        User[]              @relation("UserConnections")
+  connectedTo        User[]              @relation("UserConnections")
+  blockedUsers       User[]              @relation("UserBlocked")
+  blockedBy          User[]              @relation("UserBlocked")
+  sentRequests       ConnectionRequest[] @relation("SentRequests")
+  receivedRequests   ConnectionRequest[] @relation("ReceivedRequests")
+  sentMessages       Message[]           @relation("SentMessages")
+  receivedMessages   Message[]           @relation("ReceivedMessages")
+  connectedAccounts1 ConnectedAccount[]  @relation("User1")
+  connectedAccounts2 ConnectedAccount[]  @relation("User2")
+  posts              Post[]              @relation("UserPosts")
+  likes              Like[]              @relation("UserLikes") // Added
+  comments           Comment[]           @relation("UserComments") // Added
+  favorites          Favorite[]          @relation("UserFavorites") // Link to favorites
+}
+
+model Service {
+  id           Int           @id @default(autoincrement())
+  name         String
+  imageUrl     String? // Service image stored in Uploads/
+  appointments Appointment[] // Link to appointments
+  createdAt    DateTime      @default(now())
+}
+
+model Product {
+  id               Int            @id @default(autoincrement())
+  product_name     String
+  imageUrls        ProductImage[] @relation("ProductImages") // Link to multiple images
+  videoUrls        ProductVideo[] @relation("ProductVideos") // Link to multiple videos
+  price            Float?         @default(0.0) // Default to 0.0
+  rating           Float?         @default(0.0) // Default to 0.0
+  shortDescription String? // New field for short description
+  breed            String? // New field for breed
+  gender           String? // New field for gender (e.g., "Male", "Female")
+  age              Int? // New field for age (in months or years, depending on your preference)
+  healthStatus     String? // New field for health status (e.g., "Healthy", "Needs Care")
+  longDescription  String? // New field for long description
+  meetings         Meeting[]
+  orders           Order[]        @relation("ProductOrders")
+  createdAt        DateTime       @default(now())
+  categoryId       String
+  category         Category       @relation("CategoryProducts", fields: [categoryId], references: [id])
+  favorites        Favorite[]     @relation("ProductFavorites") // Link to favorites
+}
+
+model ProductImage {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  product   Product  @relation("ProductImages", fields: [productId], references: [id], onDelete: Cascade)
+  url       String // URL or path to the image
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model ProductVideo {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  product   Product  @relation("ProductVideos", fields: [productId], references: [id], onDelete: Cascade)
+  url       String // URL or path to the video
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Appointment {
+  id        Int      @id @default(autoincrement())
+  serviceId Int
+  service   Service  @relation(fields: [serviceId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  dateTime  DateTime
+  createdAt DateTime @default(now())
+}
+
+model Meeting {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id])
+  userId      String
+  user        User     @relation("UserMeetings", fields: [userId], references: [id])
+  invitedId   String // Add this field
+  invitedUser User     @relation("InvitedMeetings", fields: [invitedId], references: [id])
+  dateTime    DateTime
+  status      String   @default("pending") // e.g., "pending", "accepted", "rejected"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt // Add updatedAt field for consistency
+}
+
+// Message model (for context, as it relates to User)
+model Message {
+  id             String      @id @default(uuid())
+  senderId       String
+  receiverId     String
+  conversationId String? // Optional: Link to a Conversation model
+  content        String
+  type           MessageType @default(text) // Support different message types
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  isRead         Boolean     @default(false)
+  sender         User        @relation("SentMessages", fields: [senderId], references: [id])
+  receiver       User        @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@index([senderId, receiverId]) // Composite index for conversation queries
+}
+
+model BuyerProfile {
+  id     String @id @default(uuid())
+  user   User   @relation("UserToBuyerProfile", fields: [userId], references: [id])
+  userId String @unique
+}
+
+model SellerProfile {
+  id     String @id @default(uuid())
+  user   User   @relation("UserToSellerProfile", fields: [userId], references: [id])
+  userId String @unique
+}
+
+model ConnectionRequest {
+  id         String                  @id @default(uuid())
+  senderId   String
+  sender     User                    @relation("SentRequests", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User                    @relation("ReceivedRequests", fields: [receiverId], references: [id])
+  status     ConnectionRequestStatus @default(PENDING)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+}
+
+model ConnectedAccount {
+  id        String   @id @default(uuid())
+  userId1   String
+  user1     User     @relation("User1", fields: [userId1], references: [id])
+  userId2   String
+  user2     User     @relation("User2", fields: [userId2], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId1, userId2]) // Ensure no duplicate connections
+}
+
+model Otp {
+  id           String    @id @default(uuid())
+  email        String
+  otp          String
+  otpExpiresAt DateTime?
+
+  @@map("otp")
+}
+
+model Advertisement {
+  id                Int               @id @default(autoincrement())
+  title             String
+  imageUrl          String
+  redirectTo        String
+  redirectType      RedirectType
+  slogan            String
+  description       String
+  isActive          Boolean           @default(true)
+  advertisementType AdvertisementType
+  template_index    Int               @default(0)
+  posts             Post[]            @relation("AdvertisementPosts")
+  createdAt         DateTime          @default(now())
+}
+
+model Post {
+  id              Int           @id @default(autoincrement())
+  userId          String
+  user            User          @relation("UserPosts", fields: [userId], references: [id])
+  advertisementId Int
+  advertisement   Advertisement @relation("AdvertisementPosts", fields: [advertisementId], references: [id])
+  content         String? // Optional content for the post
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  likes           Like[]        @relation("PostLikes")
+  comments        Comment[]     @relation("PostComments")
+}
+
+model Like {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation("UserLikes", fields: [userId], references: [id])
+  postId    Int
+  post      Post     @relation("PostLikes", fields: [postId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId]) // A user can only like a post once
+  @@index([userId])
+  @@index([postId])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation("UserComments", fields: [userId], references: [id])
+  postId    Int
+  post      Post     @relation("PostComments", fields: [postId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation("UserFavorites", fields: [userId], references: [id])
+  productId Int
+  product   Product  @relation("ProductFavorites", fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model Order {
+  id               Int         @id @default(autoincrement())
+  userId           String
+  user             User        @relation("UserOrders", fields: [userId], references: [id])
+  productId        Int
+  product          Product     @relation("ProductOrders", fields: [productId], references: [id])
+  quantity         Int         @default(1)
+  totalPrice       Float
+  orderNumber      String      @unique // Added for order number (e.g., 46578295)
+  deliveryMethod   String? // Added for delivery method (e.g., CARD)
+  deliveryAddress  Json? // Added for delivery address (stored as JSON)
+  estimatedArrival DateTime? // Added for estimated arrival (e.g., Mon, Apr 5th)
+  billingDetails   Json? // Added for billing details (stored as JSON)
+  paymentMethod    String? // Added for payment method (e.g., Debit card)
+  status           OrderStatus @default(PENDING) // Added
+  createdAt        DateTime    @default(now())
+}
+
+enum OrderStatus {
+  PENDING
+  CANCELED
+  SHIPPED
+  DELIVERED
+}
